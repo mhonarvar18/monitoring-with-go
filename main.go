@@ -1,11 +1,11 @@
 package main
 
 import (
-	"database/sql"
 	"embed"
 	"fmt"
-	"io/ioutil"
 	"log"
+	"monitoring-with-go/database"
+	"monitoring-with-go/services"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/wailsapp/wails/v2"
@@ -13,6 +13,15 @@ import (
 )
 
 func main() {
+
+	go func() {
+		// Start the UDP listener (instead of RabbitMQ consumer)
+		err := services.StartUdpListener()
+		if err != nil {
+			log.Fatalf("Error starting UDP listener: %s", err)
+		}
+	}()
+
 	app := &App{}
 	// Call the Run method
 	app.Run()
@@ -59,52 +68,11 @@ func RunWails() {
 func (a *App) Run() {
 	fmt.Println("Backend is running...")
 
-	// اتصال به دیتابیس
-	db, err := ConnectToDatabase()
+	err := database.Init()
 	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
-
-	// اجرای اسکریپت SQL برای ایجاد جداول
-	if err := executeSchema(db); err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error initializing database: %s", err)
 	}
 
 	RunWails()
 	fmt.Println("Wails backend app is running...")
-}
-
-// اتصال به دیتابیس SQLite
-func ConnectToDatabase() (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", "./database.db")
-	if err != nil {
-		log.Fatal(err) // Logs the error and terminates the app
-	}
-	// Activate foreign keys in SQLite
-	_, err = db.Exec("PRAGMA foreign_keys = ON;")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return db, nil
-}
-
-
-// اجرای اسکریپت SQL
-func executeSchema(db *sql.DB) error {
-	sqlBytes, err := ioutil.ReadFile("database/schema.sql")
-	if err != nil {
-		log.Fatal(err)
-		return err
-	}
-
-	_, err = db.Exec(string(sqlBytes))
-	if err != nil {
-		log.Fatal(err)
-		return err
-	}
-
-	fmt.Println("Database schema created successfully.")
-	return nil
 }
