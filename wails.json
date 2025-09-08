@@ -1,0 +1,13 @@
+{
+  "name": "monitoring-with-go",
+  "frontend": {
+    "dir": "./frontend",
+    "build": "./frontend/dist"
+  },
+  "backend": {
+    "go": "./"
+  },
+  "bindings": {
+    "go": "wailsjs/go"
+  }
+}
