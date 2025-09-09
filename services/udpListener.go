@@ -1,6 +1,8 @@
 package services
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"math/rand"
@@ -8,14 +10,24 @@ import (
 	"strings"
 	"time"
 
-	"monitoring-with-go/database" // Import the database package
+	"monitoring-with-go/database"
+	"monitoring-with-go/models"
 
-	"github.com/google/uuid" // For generating UUIDs
+	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
-// StartUdpListener listens for incoming UDP messages and processes them
+// StartUdpListener starts listening for UDP messages asynchronously
+type UdpMessage struct {
+	Payload []byte
+	IP      string
+}
+
+// تعداد workerها
+const workerCount = 32
+const channelBufferSize = 10000
+
 func StartUdpListener() error {
-	// Listen on port 49152 (or any other port you prefer)
 	addr := "localhost:49152"
 	udpAddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
@@ -30,203 +42,202 @@ func StartUdpListener() error {
 
 	log.Printf("Listening for UDP messages on %s...\n", addr)
 
-	// Buffer to hold incoming data
-	buffer := make([]byte, 1024)
+	// کانال برای پیام‌ها
+	msgChan := make(chan UdpMessage, channelBufferSize)
+
+	// Workerها
+	for i := 0; i < workerCount; i++ {
+		go udpWorker(msgChan)
+	}
+
+	buffer := make([]byte, 2048)
 
 	for {
-		// Read UDP data into the buffer
 		n, addr, err := conn.ReadFromUDP(buffer)
 		if err != nil {
 			log.Println("Error reading UDP message:", err)
 			continue
 		}
 
-		// Log received message
-		log.Printf("Received message from %s: %s\n", addr, string(buffer[:n]))
+		msg := make([]byte, n)
+		copy(msg, buffer[:n])
 
-		// Process and save the received data
-		err = processUdpData(buffer[:n], addr.String())
-		if err != nil {
-			log.Println("Error processing message:", err)
+		// ارسال به کانال
+		msgChan <- UdpMessage{
+			Payload: msg,
+			IP:      addr.String(),
+		}
+	}
+}
+
+func udpWorker(msgChan <-chan UdpMessage) {
+	for msg := range msgChan {
+		if err := processUdpData(msg.Payload, msg.IP); err != nil {
+			log.Printf("Error processing UDP message: %v", err)
 		} else {
 			log.Println("Message processed successfully")
 		}
 	}
-
-	return nil
 }
 
-// processUdpData processes the received UDP data and adds additional information
+// processUdpData processes the UDP payload and saves it to the database
 func processUdpData(payload []byte, ip string) error {
-	// Convert the payload to string
+	timestamp := time.Now().Format("20060102150405.0000")
+	timestamp = strings.ReplaceAll(timestamp, ".", "")
 	message := string(payload)
-
-	// Add the IP and timestamp to the message
-	extendedMessage := fmt.Sprintf("%s&&&%s&&&%s", message, ip, fmt.Sprintf("%d", time.Now().Unix()))
-
-	// Print out the extended message (this is what you will save to the DB)
+	extendedMessage := fmt.Sprintf("%s&&&%s&&&%s", message, ip, timestamp)
+	log.Println("************************************")
 	log.Println("Extended Message:", extendedMessage)
+	log.Println("************************************")
 
-	// Split the message based on delimiter (assuming '&&&' in this case)
 	parts := strings.Split(extendedMessage, "&&&")
 	if len(parts) < 2 {
-		log.Println("Invalid message format")
 		return fmt.Errorf("invalid message format")
 	}
 
-	// Extract event data (first part of the message before the '&&&')
 	eventData := parts[0]
-
-	// Example: Process the extended message and extract data
-	// Here you would parse and extract specific fields (you might already have them from your existing code)
-	// For simplicity, we’ll assume you're extracting the necessary fields directly
-
 	eventFields := strings.Split(eventData, ";")
-
 	if len(eventFields) < 12 {
-		log.Println("Error: Invalid data format")
-		return fmt.Errorf("invalid data format")
+		return fmt.Errorf("invalid event data format")
 	}
 
-	// Extracting data from the message
-	year := eventFields[0]
-	month := eventFields[1]
-	day := eventFields[2]
-	hour := eventFields[3]
-	minute := eventFields[4]
-	// second := eventFields[5]
-	// alarmCode := eventFields[6]
+	// Example extraction (adjust based on your message format)
+	year, month, day := eventFields[0], eventFields[1], eventFields[2]
+	hour, minute := eventFields[3], eventFields[4]
 	panelCode := eventFields[7]
-	// employeeId := eventFields[8]
-	// zoneId := eventFields[9]
-	// partitionId := eventFields[10]
-	//description := eventFields[11]
-
-	// Generate a unique deduplication hash
-	dedupHash := fmt.Sprintf("%s-%s-%s", eventData, ip, time.Now().Format("20060102150405"))
-
+	
+	dedupHash := BuildDedupHash(eventData, timestamp, ip, ";")
 	randomNumber := rand.Intn(901) + 100
-	// Prepare data to save to the database
-	eventDataMap := map[string]interface{}{
-		"originalZoneId":      uuid.New().String(), // You can replace it with actual value
-		"originalPartitionId": uuid.New().String(), // Replace with actual value
-		"referenceId":         uuid.New().String(), // Replace with actual value
+
+	eventMap := map[string]interface{}{
+		"id":                  uuid.New().String(),
+		"originalZoneId":      uuid.New().String(),
+		"originalPartitionId": uuid.New().String(),
+		"referenceId":         uuid.New().String(),
 		"time":                fmt.Sprintf("%s:%s", hour, minute),
 		"date":                fmt.Sprintf("%s-%s-%s", year, month, day),
-		"originalEmployeeId":  uuid.New().String(), // Replace with actual value
+		"originalEmployeeId":  uuid.New().String(),
 		"originalBranchCode":  panelCode,
 		"ip":                  ip,
 		"description":         "description",
-		"confirmationStatus":  "Unconfirmed", // Replace with actual status if needed
+		"confirmationStatus":  "Unconfirmed",
 		"createdAt":           time.Now(),
-		"alarmId":             uuid.New().String(), // Replace with actual value
-		"branchId":            uuid.New().String(), // Replace with actual value
-		"zoneId":              uuid.New().String(), // Replace with actual value
-		"partitionId":         uuid.New().String(), // Replace with actual value
-		"id":                  uuid.New().String(), // Unique ID for the event
+		"alarmId":             uuid.New().String(),
+		"branchId":            uuid.New().String(),
+		"zoneId":              uuid.New().String(),
+		"partitionId":         uuid.New().String(),
+		"employeeId":          uuid.New().String(),
 		"old_id":              randomNumber,
 		"version":             0,
-		"deletedAt":           nil, // Assuming it's nullable
-		//"employeeId":          employeeId,         // Replace with actual value
-		"employeeId": uuid.New().String(), // Replace with actual value
-		"dedupHash":  dedupHash,
+		"deletedAt":           nil,
+		"dedupHash":           dedupHash,
 	}
 
-	// Save event to the database
-	err := saveEventToDatabase(eventDataMap)
-	if err != nil {
-		log.Printf("Error saving event: %v", err)
-		return err
-	}
-
-	// Optionally, you can publish to RabbitMQ
-	// publishToRabbit([]byte(extendedMessage))
-
-	return nil
+	return SaveEventToDatabase(eventMap)
 }
 
-func saveEventToDatabase(data map[string]interface{}) error {
-	// Start a transaction
-	tx, err := database.DB.Begin()
-	if err != nil {
-		log.Printf("Failed to begin transaction: %v", err)
-		return fmt.Errorf("failed to begin transaction: %w", err)
+// SaveEventToDatabase saves the event map into the DB asynchronously
+func SaveEventToDatabase(data map[string]interface{}) error {
+	return database.DB.Transaction(func(tx *gorm.DB) error {
+
+		// var existing models.Event
+		// if err := tx.Where("dedupHash = ?", getString(data["dedupHash"])).First(&existing).Error; err == nil {
+		// 	log.Println("Duplicate event detected, skipping save:", data["dedupHash"])
+		// 	return nil // duplicate found, skip
+		// }
+
+		event := models.Event{
+			ID:                  getString(data["id"]),
+			OriginalZoneID:      getString(data["originalZoneId"]),
+			OriginalPartitionID: getString(data["originalPartitionId"]),
+			ReferenceID:         getString(data["referenceId"]),
+			Time:                getString(data["time"]),
+			Date:                getString(data["date"]),
+			OriginalEmployeeID:  getString(data["originalEmployeeId"]),
+			OriginalBranchCode:  getString(data["originalBranchCode"]),
+			IP:                  getString(data["ip"]),
+			Description:         getString(data["description"]),
+			ConfirmationStatus:  getString(data["confirmationStatus"]),
+			CreatedAt:           getTime(data["createdAt"]),
+			AlarmID:             getString(data["alarmId"]),
+			BranchID:            getString(data["branchId"]),
+			ZoneID:              getString(data["zoneId"]),
+			PartitionID:         getString(data["partitionId"]),
+			EmployeeID:          getString(data["employeeId"]),
+			OldID:               getInt(data["old_id"]),
+			Version:             getInt(data["version"]),
+			DeletedAt:           gorm.DeletedAt{},
+			DedupHash:           getString(data["dedupHash"]),
+		}
+
+		if err := tx.Create(&event).Error; err != nil {
+			return fmt.Errorf("failed to save event: %w", err)
+		}
+
+		return nil
+	})
+}
+
+// Helpers
+
+func BuildDedupHash(message string, timestamp string, ip string, delimiter string) string {
+	// حذف trailing ;
+	canonRaw := strings.TrimRight(message, delimiter)
+
+	// normalize IP
+	ip = strings.TrimSpace(ip)
+	if parsed := net.ParseIP(ip); parsed != nil {
+		ip = parsed.String()
 	}
 
-	// Insert the event data into the database (SQLite example)
-	query := `
-        INSERT INTO Event (
-            id, originalZoneId, originalPartitionId, referenceId, time, date, 
-            originalEmployeeId, originalBranchCode, ip, description, confirmationStatus, 
-            createdAt, alarmId, branchId, zoneId, partitionId, employeeId, 
-            old_id, version, deletedAt, dedupHash
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `
+	// v1| prefix
+	dedupKey := canonRaw + "&&&" + ip + "&&&" + timestamp
+	finalKey := "v1|" + dedupKey
 
-	// Prepare the values to be inserted
-	values := []interface{}{
-		data["id"], data["originalZoneId"], data["originalPartitionId"], data["referenceId"],
-		data["time"], data["date"], data["originalEmployeeId"], data["originalBranchCode"],
-		data["ip"], data["description"], data["confirmationStatus"], data["createdAt"],
-		data["alarmId"], data["branchId"], data["zoneId"], data["partitionId"], data["employeeId"],
+	hash := sha256.Sum256([]byte(finalKey))
+	return hex.EncodeToString(hash[:])
+}
+
+func getString(val interface{}) string {
+	if val == nil {
+		return ""
 	}
-
-	// Check for nil or default values for `old_id` and `deletedAt`
-	if data["old_id"] == nil {
-		values = append(values, nil) // If `old_id` is nil, append NULL
-	} else {
-		values = append(values, data["old_id"])
+	if s, ok := val.(string); ok {
+		return s
 	}
+	return fmt.Sprintf("%v", val)
+}
 
-	// Add version and deletedAt
-	values = append(values, 0) // version
-	if data["deletedAt"] == nil {
-		values = append(values, nil) // If `deletedAt` is nil, append NULL
-	} else {
-		values = append(values, data["deletedAt"])
+func getTime(val interface{}) time.Time {
+	if val == nil {
+		return time.Time{}
 	}
-
-	// Add dedupHash
-	values = append(values, data["dedupHash"])
-
-	// Ensure the number of values matches the number of placeholders
-	expectedValues := 21
-	if len(values) != expectedValues {
-		log.Printf("Mismatch: Expected %d values, but got %d", expectedValues, len(values))
-		tx.Rollback() // Rollback the transaction if there's an issue
-		return fmt.Errorf("mismatch in the number of values and columns: expected %d, got %d", expectedValues, len(values))
+	if t, ok := val.(time.Time); ok {
+		return t
 	}
-
-	// Print values for debugging
-	fmt.Printf("Number of values to insert: %d\n", len(values))
-	fmt.Println("Values:", values)
-
-	// Insert the data into the database using the transaction
-	_, err = tx.Exec(query, values...)
-	if err != nil {
-		log.Printf("Error executing query: %v", err)
-		tx.Rollback() // Rollback the transaction on error
-		return fmt.Errorf("error saving event data: %w", err)
+	if s, ok := val.(string); ok {
+		t, _ := time.Parse(time.RFC3339, s)
+		return t
 	}
+	return time.Time{}
+}
 
-	// Commit the transaction
-	err = tx.Commit()
-	if err != nil {
-		log.Printf("Error committing transaction: %v", err)
-		return fmt.Errorf("error committing transaction: %w", err)
+func getInt(val interface{}) int {
+	if val == nil {
+		return 0
 	}
-
-	log.Println("Event saved to database successfully.")
-
-	query = `SELECT COUNT(*) FROM Event`
-	var count int
-	err = database.DB.QueryRow(query).Scan(&count)
-	if err != nil {
-		log.Printf("Error counting events: %v", err)
-		return fmt.Errorf("error counting events: %w", err)
+	switch v := val.(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	case string:
+		var i int
+		fmt.Sscanf(v, "%d", &i)
+		return i
+	default:
+		return 0
 	}
-
-	log.Printf("Total events in database: %d", count)
-
-	return nil
 }

@@ -1,63 +1,92 @@
 package database
 
 import (
-	"database/sql"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"path/filepath"
+	"strings"
+	"time"
 
-	_ "github.com/mattn/go-sqlite3" // SQLite driver
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
-var DB *sql.DB
+var DB *gorm.DB
 
+// Init initializes the database connection and applies schema.sql
 func Init() error {
-	var err error
-
-
 	dbPath := "database.db"
-	// دریافت مسیر کامل (مطلق) فایل
+
+	// مسیر مطلق فایل دیتابیس
 	absPath, err := filepath.Abs(dbPath)
 	if err != nil {
-		log.Fatalf("Error getting absolute path: %v", err)
+		return fmt.Errorf("failed to get absolute path: %v", err)
 	}
-
 	log.Printf("Using database path: %s\n", absPath)
-	
-	DB, err = sql.Open("sqlite3", "database.db")
+
+	// اتصال با GORM
+	DB, err = gorm.Open(sqlite.Open(absPath), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Info), // برای لاگ کردن query ها
+	})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to connect database: %v", err)
 	}
 
-	// Enable foreign key support in SQLite
-	_, err = DB.Exec("PRAGMA foreign_keys = ON;")
+	// فعال کردن foreign key در SQLite
+	sqlDB, err := DB.DB()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get sql.DB from gorm: %v", err)
+	}
+	_, err = sqlDB.Exec("PRAGMA foreign_keys = ON;")
+	if err != nil {
+		return fmt.Errorf("failed to enable foreign keys: %v", err)
 	}
 
-	// Call migration function if necessary
-	err = Migrate()
-	if err != nil {
-		return err
+	// حالا تنظیم connection pool روی sqlDB
+	sqlDB.SetMaxOpenConns(20)                 // حداکثر کانکشن باز
+	sqlDB.SetMaxIdleConns(10)                 // کانکشن idle
+	sqlDB.SetConnMaxLifetime(time.Minute * 5) // مدت زمان حداکثر برای هر کانکشن
+
+	//sqlDB.Exec(`DROP INDEX IF EXISTS idx_event_deduphash_active;`)
+	sqlDB.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_event_deduphash_active
+         ON "Event"("dedupHash") WHERE "deletedAt" IS NULL;`)
+  
+	// اجرای schema.sql
+	if err := applySchema(); err != nil {
+		return fmt.Errorf("failed to apply schema.sql: %v", err)
 	}
 
 	return nil
 }
 
-func Migrate() error {
-	// Apply database migrations
-	// You can use sql scripts or an ORM here to apply schema
-	// For now, this will just ensure that the schema.sql is applied
-	schema, err := ioutil.ReadFile("database/schema.sql")
+// applySchema reads schema.sql and executes it statement by statement
+func applySchema() error {
+	schemaPath := "database/schema.sql"
+
+	absSchemaPath, err := filepath.Abs(schemaPath)
 	if err != nil {
-		return err
-	}
-	_, err = DB.Exec(string(schema))
-	if err != nil {
-		return err
+		return fmt.Errorf("failed to get absolute path for schema.sql: %v", err)
 	}
 
-	fmt.Println("Database schema created successfully.")
+	content, err := ioutil.ReadFile(absSchemaPath)
+	if err != nil {
+		return fmt.Errorf("failed to read schema.sql: %v", err)
+	}
+
+	// جدا کردن statement ها با ;
+	statements := strings.Split(string(content), ";")
+	for _, stmt := range statements {
+		stmt = strings.TrimSpace(stmt)
+		if stmt == "" {
+			continue
+		}
+		if err := DB.Exec(stmt).Error; err != nil {
+			return fmt.Errorf("failed to execute statement: %s, error: %v", stmt, err)
+		}
+	}
+
+	log.Println("Database schema checked/created successfully.")
 	return nil
 }

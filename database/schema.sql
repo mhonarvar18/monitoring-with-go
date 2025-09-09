@@ -135,7 +135,7 @@ CREATE TABLE IF NOT EXISTS Event (
     "originalBranchCode" TEXT,
     ip TEXT,
     description TEXT,
-    "confermationStatus" TEXT,  -- ENUM replaced with TEXT
+    "confirmationStatus" TEXT,  -- ENUM replaced with TEXT
     "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     "alarmId" TEXT,  -- UUID as TEXT
     "branchId" TEXT,  -- UUID as TEXT
@@ -148,6 +148,10 @@ CREATE TABLE IF NOT EXISTS Event (
     "deletedAt" TIMESTAMP,
     "dedupHash" TEXT
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_event_deduphash_active
+ON "Event"("dedupHash")
+WHERE "deletedAt" IS NULL;
 
 -- Location Table
 CREATE TABLE IF NOT EXISTS Location (
