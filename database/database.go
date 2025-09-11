@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"monitoring-with-go/seeders"
 	"path/filepath"
 	"strings"
 	"time"
@@ -16,13 +17,13 @@ import (
 var DB *gorm.DB
 
 // Init initializes the database connection and applies schema.sql
-func Init() error {
+func Init() (*gorm.DB, error) {
 	dbPath := "database.db"
 
 	// مسیر مطلق فایل دیتابیس
 	absPath, err := filepath.Abs(dbPath)
 	if err != nil {
-		return fmt.Errorf("failed to get absolute path: %v", err)
+		return nil, fmt.Errorf("failed to get absolute path: %v", err)
 	}
 	log.Printf("Using database path: %s\n", absPath)
 
@@ -31,17 +32,17 @@ func Init() error {
 		Logger: logger.Default.LogMode(logger.Info), // برای لاگ کردن query ها
 	})
 	if err != nil {
-		return fmt.Errorf("failed to connect database: %v", err)
+		return nil, fmt.Errorf("failed to connect database: %v", err)
 	}
 
 	// فعال کردن foreign key در SQLite
 	sqlDB, err := DB.DB()
 	if err != nil {
-		return fmt.Errorf("failed to get sql.DB from gorm: %v", err)
+		return nil, fmt.Errorf("failed to get sql.DB from gorm: %v", err)
 	}
 	_, err = sqlDB.Exec("PRAGMA foreign_keys = ON;")
 	if err != nil {
-		return fmt.Errorf("failed to enable foreign keys: %v", err)
+		return nil, fmt.Errorf("failed to enable foreign keys: %v", err)
 	}
 
 	// حالا تنظیم connection pool روی sqlDB
@@ -55,10 +56,13 @@ func Init() error {
   
 	// اجرای schema.sql
 	if err := applySchema(); err != nil {
-		return fmt.Errorf("failed to apply schema.sql: %v", err)
+		return nil, fmt.Errorf("failed to apply schema.sql: %v", err)
 	}
 
-	return nil
+	// اجرای Seeder
+	seeders.SeedUsers(DB)
+
+	return DB, nil
 }
 
 // applySchema reads schema.sql and executes it statement by statement

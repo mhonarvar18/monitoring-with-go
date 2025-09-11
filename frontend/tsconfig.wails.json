@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.app.json",
+  "include": ["wailsjs"],
+  "compilerOptions": {
+    "noEmit": true,
+    "erasableSyntaxOnly": false
+  }
+}

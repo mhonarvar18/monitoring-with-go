@@ -9,18 +9,26 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
+	"gorm.io/gorm"
 )
 
 //go:embed frontend/dist/*
 var assets embed.FS // Embed all frontend files
 
 func main() {
-	app := &App{}
-
 	// Initialize database first
-	err := database.Init()
+	db, err := database.Init()
 	if err != nil {
 		log.Fatalf("❌ Error initializing database: %s", err)
+	}
+
+	auth := &services.AuthService{
+		DB: db,
+	}
+
+	app := &App{
+		DB:          db,
+		AuthService: auth,
 	}
 
 	// Start UDP listener in background
@@ -37,30 +45,17 @@ func main() {
 		Width:  1200,
 		Height: 750,
 		Assets: assets,
-		Bind:   []interface{}{app},
+		Bind: []interface{}{
+			app,
+			auth,
+		},
 	}); err != nil {
 		log.Fatalf("❌ Failed to start Wails app: %s", err)
 	}
 }
 
 // App struct برای bind شدن به frontend
-type App struct{}
-
-// Login method exposed to frontend
-func (a *App) Login(credentials map[string]string) (map[string]interface{}, error) {
-	username := credentials["username"]
-	password := credentials["password"]
-
-	// TODO: Replace this with real DB check
-	if username == "admin" && password == "password123" {
-		return map[string]interface{}{
-			"success": true,
-			"message": "Login successful",
-		}, nil
-	} else {
-		return map[string]interface{}{
-			"success": false,
-			"message": "Invalid username or password",
-		}, nil
-	}
+type App struct {
+	DB          *gorm.DB
+	AuthService *services.AuthService
 }

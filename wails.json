@@ -1,8 +1,14 @@
 {
   "name": "monitoring-with-go",
   "frontend": {
-    "dir": "./frontend",
-    "build": "./frontend/dist"
+    "dir": "frontend",
+    "install": "npm install",
+    "build": "npm run build",
+    "dev": {
+      "command": "npm run dev",
+      "port": 5173,
+      "proxy": "http://localhost:5173"
+    }
   },
   "backend": {
     "go": "./"

@@ -1,0 +1,18 @@
+  export const labelOverrides = {
+    id: "ردیف",
+    date: "تاریخ",
+    time: "زمان",
+    province: "استان",
+    city: "شهر",
+    district: "منطقه",
+    branchName: "نام شعبه",
+    branchCode: "کد شعبه",
+    ip: "IP / تلفن شعبه",
+    alarm: "رویداد",
+    partitionLabel: "پارتیشن",
+    zoneLabel: "زون",
+    employee: "کاربر شعبه",
+    referenceId: "اطلاعات تکمیلی",
+    confirmationStatus: "تاییدیه",
+    description: "توضیحات",
+  };
