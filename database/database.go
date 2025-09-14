@@ -65,6 +65,7 @@ func Init() (*gorm.DB, error) {
 	seeders.SeedAlarmCategories(DB)
 	seeders.SeedPermissions(DB)
 	seeders.SeedZoneTypes(DB)
+	seeders.SeedPanelTypes(DB)
 
 	return DB, nil
 }
