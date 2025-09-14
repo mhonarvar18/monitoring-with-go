@@ -1,11 +1,12 @@
 package models
 
 import (
+	"time"
 	"gorm.io/gorm"
 )
 
 type Location struct {
-	ID          string         `gorm:"primaryKey;type:text;column:id" json:"id"`
+	ID          string         `gorm:"primaryKey;type:text;default:(lower(hex(randomblob(16))));column:id" json:"id"`
 	OldID       int            `gorm:"column:old_id" json:"old_id"`
 	Label       string         `gorm:"column:label" json:"label"`
 	OldParentID int            `gorm:"column:old_parentId" json:"old_parentId"`
@@ -13,6 +14,8 @@ type Location struct {
 	ParentID    string         `gorm:"column:parentId" json:"parentId"`
 	Sort        int            `gorm:"column:sort" json:"sort"`
 	Version     int            `gorm:"column:version;default:0" json:"version"`
+	CreatedAt   time.Time      `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`
+	UpdatedAt   time.Time      `gorm:"column:updatedAt;autoUpdateTime" json:"updatedAt"`
 	DeletedAt   gorm.DeletedAt `gorm:"column:deletedAt;index" json:"deletedAt"`
 }
 
