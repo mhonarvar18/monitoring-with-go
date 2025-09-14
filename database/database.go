@@ -62,6 +62,7 @@ func Init() (*gorm.DB, error) {
 	// اجرای Seeder
 	seeders.SeedUsers(DB)
 	seeders.SeedLocations(DB)
+	seeders.SeedAlarmCategories(DB)
 
 	return DB, nil
 }
