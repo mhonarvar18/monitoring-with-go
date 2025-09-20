@@ -1,8 +1,17 @@
 package models
 
 import (
-	"time"
 	"gorm.io/gorm"
+	"time"
+)
+
+type PriorityLevel string
+
+const (
+	PriorityVeryHigh PriorityLevel = "VERY_HIGH"
+	PriorityHigh     PriorityLevel = "HIGH"
+	PriorityMedium   PriorityLevel = "MEDIUM"
+	PriorityLow      PriorityLevel = "LOW"
 )
 
 type AlarmCategory struct {
@@ -11,7 +20,7 @@ type AlarmCategory struct {
 	Label         string         `gorm:"column:label" json:"label"`
 	Code          int            `gorm:"column:code" json:"code"`
 	NeedsApproval bool           `gorm:"column:needsApproval;default:false" json:"needsApproval"`
-	Priority      string         `gorm:"column:priority;default:'NONE'" json:"priority"`
+	Priority      PriorityLevel  `gorm:"column:priority;default:'NONE'" json:"priority"`
 	CreatedAt     time.Time      `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`
 	UpdatedAt     time.Time      `gorm:"column:updatedAt;autoUpdateTime" json:"updatedAt"`
 	Version       int            `gorm:"column:version;default:0" json:"version"`
