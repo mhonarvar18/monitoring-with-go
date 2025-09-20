@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"monitoring-with-go/models"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -17,24 +18,15 @@ const (
 
 func SeedLocations(db *gorm.DB) {
 
-	
-	// فقط اسکیمارو به‌روز کن؛ AutoMigrate ستون جدید اضافه می‌کنه ولی چیزی رو نمی‌پاکه
-	if err := db.AutoMigrate(&models.Location{}); err != nil {
-		log.Fatalf("migrate Location: %v", err)
-	}
-
-	// اگر جدول قبلاً دیتا دارد، کاری نکن (نه Drop، نه Truncate، نه Seed مجدد)
 	var cnt int64
 	if err := db.Model(&models.Location{}).Count(&cnt).Error; err != nil {
 		log.Fatalf("count Location: %v", err)
 	}
+
+	// اگر جدول دارای داده باشد، از seeding و migration جلوگیری کنیم
 	if cnt > 0 {
 		log.Println("ℹ️ Location already seeded; skipping.")
 		return
-	}
-
-	if err := db.AutoMigrate(&models.Location{}); err != nil {
-		log.Fatalf("migrate Location: %v", err)
 	}
 
 	ctx := context.Background()
@@ -44,7 +36,7 @@ func SeedLocations(db *gorm.DB) {
 	}
 
 	// 1) کشور
-	iran := models.Location{Type: "COUNTRY", Label: "ایران"}
+	iran := models.Location{ID: uuid.NewString(), Type: "COUNTRY", Label: "ایران"}
 	{
 		var existed models.Location
 		tx := db.Where("label = ? AND type = ? AND parentId IS NULL", iran.Label, iran.Type).First(&existed)
@@ -97,7 +89,7 @@ func SeedLocations(db *gorm.DB) {
 	// 3) ساخت استان‌ها
 	provinceIDs := make(map[string]string, len(provinces))
 	for pname := range provinces {
-		prov := models.Location{Type: "STATE", Label: pname, ParentID: iran.ID}
+		prov := models.Location{ID: uuid.NewString(), Type: "STATE", Label: pname, ParentID: &iran.ID}
 
 		var existed models.Location
 		tx := db.Where("label = ? AND type = ? AND parentId = ?", prov.Label, prov.Type, iran.ID).First(&existed)
@@ -118,7 +110,7 @@ func SeedLocations(db *gorm.DB) {
 		pid := provinceIDs[pname]
 		for _, cname := range cities {
 			parent := pid
-			city := models.Location{Type: "CITY", Label: cname, ParentID: parent}
+			city := models.Location{ID: uuid.NewString(), Type: "CITY", Label: cname, ParentID: &parent}
 
 			var existed models.Location
 			tx := db.Where("label = ? AND type = ? AND parentId = ?", city.Label, city.Type, parent).First(&existed)

@@ -1,8 +1,8 @@
 package models
 
 import (
-	"time"
 	"gorm.io/gorm"
+	"time"
 )
 
 type Location struct {
@@ -11,7 +11,7 @@ type Location struct {
 	Label       string         `gorm:"column:label" json:"label"`
 	OldParentID int            `gorm:"column:old_parentId" json:"old_parentId"`
 	Type        string         `gorm:"column:type" json:"type"`
-	ParentID    string         `gorm:"column:parentId" json:"parentId"`
+	ParentID    *string        `gorm:"column:parentId" json:"parentId"`
 	Sort        int            `gorm:"column:sort" json:"sort"`
 	Version     int            `gorm:"column:version;default:0" json:"version"`
 	CreatedAt   time.Time      `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`

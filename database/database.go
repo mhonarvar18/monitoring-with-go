@@ -53,7 +53,7 @@ func Init() (*gorm.DB, error) {
 	//sqlDB.Exec(`DROP INDEX IF EXISTS idx_event_deduphash_active;`)
 	sqlDB.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_event_deduphash_active
          ON "Event"("dedupHash") WHERE "deletedAt" IS NULL;`)
-  
+
 	// اجرای schema.sql
 	if err := applySchema(); err != nil {
 		return nil, fmt.Errorf("failed to apply schema.sql: %v", err)
@@ -62,6 +62,11 @@ func Init() (*gorm.DB, error) {
 	// اجرای Seeder
 	seeders.SeedUsers(DB)
 	seeders.SeedLocations(DB)
+	seeders.SeedAlarmCategories(DB)
+	seeders.SeedPermissions(DB)
+	seeders.SeedZoneTypes(DB)
+	seeders.SeedPanelTypes(DB)
+	seeders.SeedAlarms(DB)
 
 	return DB, nil
 }

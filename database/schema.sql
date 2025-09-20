@@ -28,6 +28,8 @@ CREATE TABLE IF NOT EXISTS Alarm (
     id TEXT DEFAULT (lower(hex(randomblob(16)))) NOT NULL,  -- Auto-generated UUID (TEXT)
     "panelTypeId" TEXT,  -- UUID as TEXT
     version INTEGER DEFAULT 0 NOT NULL,
+    "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    "updatedAt" TIMESTAMP NOT NULL,
     "deletedAt" TIMESTAMP
 );
 
